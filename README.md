@@ -19,8 +19,11 @@ Download links for OpenCL library:
 **AMD**: https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases  
 **Intel**: https://software.intel.com/en-us/articles/opencl-drivers  
 
+On my Windows VM, I found it pretty easy to use the AMD link.  
 If you have installed make and cmake, you can just run `cmake . && make` in the root directory of this repository. You'll get a `fastmerkle` file.  
 Alternatively, with gcc:  
 
 **macOS**: `gcc main.c -framework OpenCL -o fastmerkle`  
 **Linux** and **Windows**: `gcc main.c -lOpenCL -o fastmerkle`
+
+You might have to set include and library paths.
