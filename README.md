@@ -52,7 +52,7 @@ You can keep the other two properties as is. If the program crashes, try setting
 
 Now you can perform a short integrity check to see whether the program computes the right hashes. Run:  
 
-`./fastmerkle file 563638.bin` (`.\fastmerkle.exe file 563638.bin` on Windows) to hash bitcoin's largest block ever found: (563638)[https://blockchair.com/bitcoin-sv/block/563638].  
+`./fastmerkle file 563638.bin` (`.\fastmerkle.exe file 563638.bin` on Windows) to hash the largest bitcoin block ever found: [563638](https://blockchair.com/bitcoin-sv/block/563638).  
 
 The merkle root hash should be this one: `a46310f75adc7a63ff5be1fbba23fc345efce5175c59e1b7a443a297f8d3219d`.  
 'Mutated' should be `false`.  
