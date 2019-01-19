@@ -587,7 +587,7 @@ cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, siz
     return CL_SUCCESS;
 }
 
-long long time_now(){
+int64_t time_now(){
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_nsec / NSEC_PER_MSEC + ts.tv_sec * MSEC_PER_SEC;
