@@ -24,6 +24,6 @@ If you have installed make and cmake, you can just run `cmake . && make` in the 
 Alternatively, with gcc:  
 
 **macOS**: `gcc main.c -framework OpenCL -o fastmerkle`  
-**Linux** and **Windows**: `gcc main.c -lOpenCL -o fastmerkle`
+**Linux** and **Windows (MinGW64)**: `gcc main.c -lOpenCL -o fastmerkle`
 
 You might have to set include and library paths.
