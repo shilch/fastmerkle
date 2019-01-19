@@ -59,7 +59,7 @@ The merkle root hash should be this one: `a46310f75adc7a63ff5be1fbba23fc345efce5
 
 If everything is working so far, you can now run the benchmark. If not, try setting `use_host_ptr` to 0.
 
-`./fastmerkle benchmark` to run a benchmark. This will take some time.
+`./fastmerkle benchmark` (`.\fastmerkle.exe benchmark` on Windows) to run a benchmark. This will take some time.
 
 Assuming an average transaction size of 400 byte, you can use the following formular to calculate the block size from the number of leaves: `BLOCKSIZE_IN_MB = LEAVES * 400 / 1000000`. The benchmark tests up to 33554432 leaves which corresponds to a blocksize of about 13.5GB.
 
