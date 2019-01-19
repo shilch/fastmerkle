@@ -154,11 +154,11 @@ cl_int print_info(){
 
         printf("Platform #%d\n", i);
 
-        printf("  Name:           ");
+        printf("  Name:       ");
         print_platform_info(platform, CL_PLATFORM_NAME);
         printf("\n");
 
-        printf("  Version:        ");
+        printf("  Version:    ");
         print_platform_info(platform, CL_PLATFORM_VERSION);
         printf("\n\n");
 
@@ -173,7 +173,7 @@ cl_int print_info(){
         for(cl_uint j = 0; j < num_devices; j++){
             cl_device_id device = devices[j];
 
-            printf("  Device #%d\n", i);
+            printf("  Device #%d\n", j);
 
             printf("    Name:     ");
             print_device_info(device, CL_DEVICE_NAME);
