@@ -1,0 +1,18 @@
+# OpenCL platform index
+# Run fastmerkle with command 'info' to obtain
+# information about available hardware
+platform = 0
+
+# OpenCL device to use on specified platform
+# Run fastmerkle with command 'info' to obtain
+# information about available hardware
+device = 1
+
+# Whether or not you want to use
+# host pointers when dealing with buffers.
+# Setting to 1 can increase or decrease
+# performance or even crash the program.
+use_host_ptr = 1
+
+# Number of iterations for benchmarking
+iterations = 10

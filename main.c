@@ -6,24 +6,20 @@
 
 #ifdef __APPLE__
 #   include <OpenCL/cl.h>
-#elif
+#else
 #   include <CL/cl.h>
 #endif
 
 #define SHA256_DIGEST_SIZE 32
-#define NSEC_PER_SEC 1000000000
+#define NSEC_PER_MSEC 1000000
+#define MSEC_PER_SEC 1000
 
 typedef struct {
     cl_uint platform_id;
     cl_uint device_id;
-    bool copy_buffer;
+    bool use_host_ptr;
+    size_t iterations;
 } config_t;
-
-config_t config = {
-    .platform_id = 0,
-    .device_id = 0,
-    .copy_buffer = false,
-};
 
 size_t benchmark_perfect_trees[] = {
         256, 512, 1024, 2048, 4096, 8192, 16384, 32768,
@@ -36,35 +32,68 @@ size_t benchmark_imperfect_trees[] = {
 
 void print_help();
 cl_int print_info();
-cl_int print_platform_info(cl_platform_id platform, cl_platform_info info);
-cl_int print_device_info(cl_device_id device, cl_device_info info);
+cl_int print_platform_info(cl_platform_id, cl_platform_info);
+cl_int print_device_info(cl_device_id, cl_device_info);
 cl_int find_device(cl_uint platform_id, cl_uint device_id, cl_device_id*);
-cl_int run_custom();
-cl_int run_benchmark();
-cl_int run_file(const char* path);
-void print_hash(const uint8_t*);
-void print_hash_reversed(const uint8_t*);
+cl_int run_custom(cl_context, cl_device_id, cl_program, bool);
+cl_int run_benchmark(cl_context, cl_device_id, cl_program, size_t, bool);
+cl_int run_file(cl_context, cl_device_id, cl_program, const char*, bool);
+void print_results(const uint8_t*, bool, int64_t, bool);
+void print_hash(const uint8_t*, bool);
+bool parse_config(config_t*);
 bool compile_kernel(cl_context, cl_device_id, cl_program*);
-cl_int compute_tree(cl_context, cl_device_id, cl_program, size_t, uint8_t*, bool*);
+cl_int compute_tree(cl_context, cl_device_id, cl_program, size_t, uint8_t*, bool*, bool);
+int64_t time_now();
 
 int main(int argc, char** argv) {
+    char* command;
+    config_t config;
+    cl_context ctx;
+    cl_device_id device;
+    cl_program program;
+    cl_int err;
+
     if(argc < 2){
         printf("Please specify a command!\n\n");
         print_help();
         return 1;
     }
 
-    char* command = argv[1];
+    command = argv[1];
     if(strcmp(command, "info") == 0){
-        cl_int err = print_info();
+        err = print_info();
         if(err != CL_SUCCESS){
             printf("Encountered OpenCL error %d\n", err);
             return 1;
         }
         return 0;
     }
+
+    if(!parse_config(&config)){
+        printf("Failed to parse config\n");
+        return 1;
+    }
+
+    err = find_device(config.platform_id, config.device_id, &device);
+    if(err != CL_SUCCESS){
+        printf("Failed to find OpenCL device\n");
+        return 1;
+    }
+
+    ctx = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
+    if(err != CL_SUCCESS){
+        printf("Failed to create context\n");
+        return 1;
+    }
+
+    printf("Compiling kernel\n");
+    if(!compile_kernel(ctx, device, &program)){
+        printf("Failed to compile kernel\n");
+        return 1;
+    }
+
     if(strcmp(command, "custom") == 0){
-        cl_int err = run_custom();
+        err = run_custom(ctx, device, program, config.use_host_ptr);
         if(err != CL_SUCCESS){
             printf("Encountered OpenCL error %d\n", err);
             return 1;
@@ -72,7 +101,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     if(strcmp(command, "benchmark") == 0){
-        cl_int err = run_benchmark();
+        err = run_benchmark(ctx, device, program, config.iterations, config.use_host_ptr);
         if(err != CL_SUCCESS){
             printf("Encountered OpenCL error %d\n", err);
             return 1;
@@ -85,7 +114,7 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        cl_int err = run_file(argv[2]);
+        err = run_file(ctx, device, program, argv[2], config.use_host_ptr);
         if(err != CL_SUCCESS){
             printf("Encountered OpenCL error %d\n", err);
             return 1;
@@ -166,6 +195,10 @@ cl_int print_info(){
         }
     }
 
+    if(num_platforms == 0){
+        printf("No OpenCL platforms/devices found!\n");
+    }
+
     return CL_SUCCESS;
 }
 
@@ -224,28 +257,8 @@ cl_int find_device(cl_uint platform_id, cl_uint device_id, cl_device_id* device)
     return CL_SUCCESS;
 }
 
-cl_int run_custom(){
+cl_int run_custom(cl_context ctx, cl_device_id device, cl_program program, bool use_host_ptr){
     cl_int err;
-
-    printf("Finding OpenCL device\n");
-
-    cl_device_id device;
-    err = find_device(config.platform_id, config.device_id, &device);
-    if(err != CL_SUCCESS) return err;
-
-    cl_context ctx = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
-    if(err != CL_SUCCESS){
-        printf("Failed to create OpenCL context\n");
-        return err;
-    }
-
-    printf("Compiling source code\n");
-
-    cl_program program;
-    if(!compile_kernel(ctx, device, &program)){
-        printf("Failed to compile kernel\n");
-        return CL_BUILD_ERROR;
-    }
 
     while(true){
         size_t leaves;
@@ -255,14 +268,12 @@ cl_int run_custom(){
 
         if(leaves == 0) break;
 
-        struct timespec start, end;
-
-        clock_gettime(CLOCK_MONOTONIC, &start);
-
         uint8_t* data = calloc(leaves, SHA256_DIGEST_SIZE * sizeof(uint8_t));
         bool mutated = false;
 
-        err = compute_tree(ctx, device, program, leaves, data, &mutated);
+        int64_t start = time_now();
+
+        err = compute_tree(ctx, device, program, leaves, data, &mutated, use_host_ptr);
         if(err != CL_SUCCESS){
             free(data);
 
@@ -270,19 +281,9 @@ cl_int run_custom(){
             return err;
         }
 
-        clock_gettime(CLOCK_MONOTONIC, &end);
+        int64_t end = time_now();
 
-        long long msec = ((end.tv_sec - start.tv_sec) * NSEC_PER_SEC + (end.tv_nsec - start.tv_nsec)) / 1000000;
-
-        printf("  --> Tree computed!\n");
-
-        printf("  --> Root hash: ");
-        print_hash(data);
-        printf("\n");
-
-        printf("  --> Mutated: %s\n", mutated ? "true" : "false");
-
-        printf("  --> Took: %lldms\n", msec);
+        print_results(data, false, end - start, mutated);
 
         free(data);
     }
@@ -290,30 +291,11 @@ cl_int run_custom(){
     return CL_SUCCESS;
 }
 
-cl_int run_benchmark(){
+cl_int run_benchmark(cl_context ctx, cl_device_id device, cl_program program, size_t iterations, bool test_use_host_ptr){
     assert(sizeof(benchmark_perfect_trees) == sizeof(benchmark_imperfect_trees));
+    assert(iterations > 0);
 
     cl_int err;
-
-    printf("Finding OpenCL device\n");
-
-    cl_device_id device;
-    err = find_device(config.platform_id, config.device_id, &device);
-    if(err != CL_SUCCESS) return err;
-
-    cl_context ctx = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
-    if(err != CL_SUCCESS){
-        printf("Failed to create OpenCL context\n");
-        return err;
-    }
-
-    printf("Compiling source code\n");
-
-    cl_program program;
-    if(!compile_kernel(ctx, device, &program)){
-        printf("Failed to compile kernel\n");
-        return CL_BUILD_ERROR;
-    }
 
     printf("Running on device: ");
     print_device_info(device, CL_DEVICE_NAME);
@@ -321,46 +303,58 @@ cl_int run_benchmark(){
     printf("Running on version: ");
     print_device_info(device, CL_DEVICE_VERSION);
     printf("\n");
-    printf("Copy Buffer: %s\n", config.copy_buffer ? "enabled" : "disabled");
+    //printf("Copy Buffer: %s\n", config.always_copy ? "enabled" : "disabled");
     printf("\n");
 
-    for(size_t i = 0; i < 2 * sizeof(benchmark_perfect_trees) / sizeof(benchmark_imperfect_trees[0]); i++){
-        size_t leaves;
-        if(i % 2 == 0){
-            leaves = benchmark_perfect_trees[i / 2];
-        } else {
-            leaves = benchmark_imperfect_trees[(i - 1) / 2];
+    for(size_t host_ptr_loop = 0; host_ptr_loop < 2; host_ptr_loop++){
+        if(host_ptr_loop == 1 && !test_use_host_ptr)
+            continue;
+
+        bool use_host_ptr = host_ptr_loop != 0;
+
+        for(size_t i = 0; i < 2 * sizeof(benchmark_perfect_trees) / sizeof(benchmark_imperfect_trees[0]); i++){
+            size_t leaves;
+            if(i % 2 == 0){
+                leaves = benchmark_imperfect_trees[i / 2];
+            } else {
+                leaves = benchmark_perfect_trees[(i - 1) / 2];
+            }
+
+            printf("Leaves: %8zu", leaves);
+
+            printf("  Using host pointer: %5s", use_host_ptr ? "true" : "false");
+
+            long long average_time = 0;
+
+            for(size_t j = 0; j < iterations; j++){
+                uint8_t* data = calloc(leaves, SHA256_DIGEST_SIZE * sizeof(uint8_t));
+                bool mutated = false;
+
+                int64_t start = time_now();
+
+                err = compute_tree(ctx, device, program, leaves, data, &mutated, use_host_ptr);
+                if(err != CL_SUCCESS){
+                    free(data);
+
+                    printf("\nFailed to compute tree\n");
+                    return err;
+                }
+
+                int64_t end = time_now();
+
+                average_time += (long long)((end - start) / (double)iterations);
+
+                free(data);
+            }
+
+            printf("  Computed in %5lldms on average (%zu iterations)\n", average_time, iterations);
         }
-
-        printf("Leaves: %8zu", leaves);
-
-        struct timespec start, end;
-
-        clock_gettime(CLOCK_MONOTONIC, &start);
-
-        uint8_t* data = calloc(leaves, SHA256_DIGEST_SIZE * sizeof(uint8_t));
-        bool mutated = false;
-
-        err = compute_tree(ctx, device, program, leaves, data, &mutated);
-        if(err != CL_SUCCESS){
-            free(data);
-
-            printf("\nFailed to compute tree\n");
-            return err;
-        }
-
-        clock_gettime(CLOCK_MONOTONIC, &end);
-
-        long long msec = ((end.tv_sec - start.tv_sec) * NSEC_PER_SEC + (end.tv_nsec - start.tv_nsec)) / 1000000;
-
-        printf("  Computed in %lldms\n", msec);
-        free(data);
     }
 
     return CL_SUCCESS;
 }
 
-cl_int run_file(const char* path){
+cl_int run_file(cl_context ctx, cl_device_id device, cl_program program, const char* path, bool use_host_ptr){
     printf("Reading block file\n");
 
     FILE* fp = fopen(path, "r");
@@ -386,38 +380,14 @@ cl_int run_file(const char* path){
         return CL_SUCCESS;
     }
 
-    cl_int err;
-
-    printf("Finding OpenCL device\n");
-
-    cl_device_id device;
-    err = find_device(config.platform_id, config.device_id, &device);
-    if(err != CL_SUCCESS) return err;
-
-    cl_context ctx = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
-    if(err != CL_SUCCESS){
-        printf("Failed to create OpenCL context\n");
-        return err;
-    }
-
-    printf("Compiling source code\n");
-
-    cl_program program;
-    if(!compile_kernel(ctx, device, &program)){
-        printf("Failed to compile kernel\n");
-        return CL_BUILD_ERROR;
-    }
-
     size_t leaves = file_size / SHA256_DIGEST_SIZE;
 
     printf("Starting computation\n");
 
-    struct timespec start, end;
-    clock_gettime(CLOCK_MONOTONIC, &start);
+    int64_t start = time_now();
 
     bool mutated = false;
-
-    err = compute_tree(ctx, device, program, leaves, data, &mutated);
+    cl_int err = compute_tree(ctx, device, program, leaves, data, &mutated, use_host_ptr);
     if(err != CL_SUCCESS){
         free(data);
 
@@ -425,35 +395,75 @@ cl_int run_file(const char* path){
         return err;
     }
 
-    clock_gettime(CLOCK_MONOTONIC, &end);
+    int64_t end = time_now();
 
-    long long msec = ((end.tv_sec - start.tv_sec) * NSEC_PER_SEC + (end.tv_nsec - start.tv_nsec)) / 1000000;
-
-    printf("  --> Tree computed!\n");
-
-    printf("  --> Root hash: ");
-    print_hash_reversed(data);
-    printf("\n");
-
-    printf("  --> Mutated: %s\n", mutated ? "true" : "false");
-
-    printf("  --> Took: %lldms\n", msec);
+    print_results(data, true, end - start, mutated);
 
     free(data);
 
     return CL_SUCCESS;
 }
 
-void print_hash(const uint8_t* hash){
+void print_results(const uint8_t* root_hash, bool reverse_hash, int64_t time, bool mutated){
+    printf("  --> Tree computed!\n");
+    printf("  --> Root hash: ");
+    print_hash(root_hash, reverse_hash);
+    printf("\n");
+    printf("  --> Mutated: %s\n", mutated ? "true" : "false");
+    printf("  --> Took: %lldms\n", time);
+}
+
+void print_hash(const uint8_t* hash, bool reverse){
     for(size_t i = 0; i < SHA256_DIGEST_SIZE; i++){
-        printf("%02x", hash[i]);
+        if(!reverse){
+            printf("%02x", hash[i]);
+        } else {
+            printf("%02x", hash[SHA256_DIGEST_SIZE - 1 - i]);
+        }
     }
 }
 
-void print_hash_reversed(const uint8_t* hash){
-    for(int i = SHA256_DIGEST_SIZE - 1; i >= 0; i--){
-        printf("%02x", hash[i]);
+bool parse_config(config_t* config){
+    FILE* fp = fopen("config.txt", "r");
+
+    if(fp == NULL){
+        perror("Failed to open config.txt");
+        return false;
     }
+
+    char* line = NULL;
+    size_t len = 0;
+
+    while (getline(&line, &len, fp) != -1) {
+        if(len == 0) continue;
+        if(line[0] == '#') continue;
+
+        line[len] = '\0';
+
+        char property[20];
+        size_t value;
+        sscanf(line, "%s = %zu", property, &value);
+
+        if(strncmp(property, "platform", 8) == 0){
+            config->platform_id = (cl_uint) value;
+        } else if(strncmp(property, "device", 6) == 0){
+            config->device_id = (cl_uint) value;
+        } else if(strncmp(property, "use_host_ptr", 12) == 0){
+            config->use_host_ptr = (bool) value;
+        } else if(strncmp(property, "iterations", 10) == 0) {
+            config->iterations = value;
+        } else {
+            printf("Invalid property '%s' in config\n", property);
+            return false;
+        }
+    }
+
+    if(fclose(fp) != 0){
+        perror("Failed to close file config.txt");
+        return false;
+    }
+
+    return true;
 }
 
 bool compile_kernel(cl_context ctx, cl_device_id device, cl_program* program){
@@ -479,7 +489,7 @@ bool compile_kernel(cl_context ctx, cl_device_id device, cl_program* program){
 
     *program = clCreateProgramWithSource(ctx, 1, (const char**)&source_code, &file_size, &err);
     if(err != CL_SUCCESS){
-        printf("Failed to create program with souorce");
+        printf("Failed to create program with source\n");
         return false;
     }
 
@@ -509,21 +519,21 @@ bool compile_kernel(cl_context ctx, cl_device_id device, cl_program* program){
     return true;
 }
 
-cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, size_t leaves, uint8_t* data, bool* mutated_ptr){
+cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, size_t leaves, uint8_t* data, bool* mutated_ptr, bool use_host_ptr){
     cl_int err;
 
     cl_command_queue queue = clCreateCommandQueue(ctx, device, 0, &err);
     if(err != CL_SUCCESS) return err;
 
     cl_mem data_buf;
-    if(config.copy_buffer){
+    if(use_host_ptr){
+        data_buf = clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, SHA256_DIGEST_SIZE * leaves * sizeof(uint8_t), data, &err);
+        if(err != CL_SUCCESS) return err;
+    } else {
         data_buf = clCreateBuffer(ctx, CL_MEM_READ_WRITE, SHA256_DIGEST_SIZE * leaves * sizeof(uint8_t), NULL, &err);
         if(err != CL_SUCCESS) return err;
 
         err = clEnqueueWriteBuffer(queue, data_buf, CL_TRUE, 0, SHA256_DIGEST_SIZE * leaves * sizeof(uint8_t), data, 0, NULL, NULL);
-        if(err != CL_SUCCESS) return err;
-    } else {
-        data_buf = clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, SHA256_DIGEST_SIZE * leaves * sizeof(uint8_t), data, &err);
         if(err != CL_SUCCESS) return err;
     }
 
@@ -562,7 +572,7 @@ cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, siz
     err = clWaitForEvents(1, &wait);
     if(err != CL_SUCCESS) return err;
 
-    if(config.copy_buffer){
+    if(!use_host_ptr){
         err = clEnqueueReadBuffer(queue, data_buf, CL_TRUE, 0, SHA256_DIGEST_SIZE * sizeof(uint8_t), data, 0, NULL, NULL);
         if(err != CL_SUCCESS) return err;
     }
@@ -575,4 +585,10 @@ cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, siz
     }
 
     return CL_SUCCESS;
+}
+
+long long time_now(){
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_nsec / NSEC_PER_MSEC + ts.tv_sec * MSEC_PER_SEC;
 }
