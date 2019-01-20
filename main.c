@@ -438,11 +438,13 @@ bool parse_config(config_t* config){
         if(len == 0) continue;
         if(line[0] == '#') continue;
 
-        line[len] = '\0';
+        char line_copied[len + 1];
+        strncpy(line_copied, line, len);
+        line_copied[len] = '\0';
 
         char property[20];
         size_t value;
-        sscanf(line, "%s = %zu", property, &value);
+        sscanf(line_copied, "%s = %zu", property, &value);
 
         if(strncmp(property, "platform", 8) == 0){
             config->platform_id = (cl_uint) value;
@@ -538,8 +540,17 @@ cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, siz
     }
 
     cl_int mutated = 0;
-    cl_mem mutated_buf = clCreateBuffer(ctx, CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, sizeof(cl_int), &mutated, &err);
-    if(err != CL_SUCCESS) return err;
+    cl_mem mutated_buf;
+    if(use_host_ptr) {
+        mutated_buf = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY | CL_MEM_USE_HOST_PTR, sizeof(cl_int), &mutated, &err);
+        if(err != CL_SUCCESS) return err;
+    } else {
+        mutated_buf = clCreateBuffer(ctx, CL_MEM_WRITE_ONLY, sizeof(cl_int), NULL, &err);
+        if(err != CL_SUCCESS) return err;
+
+        err = clEnqueueWriteBuffer(queue, mutated_buf, CL_TRUE, 0, sizeof(cl_int), &mutated, 0, NULL, NULL);
+        if(err != CL_SUCCESS) return err;
+    }
 
     cl_kernel kernel = clCreateKernel(program, "merkle", &err);
     if(err != CL_SUCCESS) return err;
@@ -574,6 +585,9 @@ cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, siz
 
     if(!use_host_ptr){
         err = clEnqueueReadBuffer(queue, data_buf, CL_TRUE, 0, SHA256_DIGEST_SIZE * sizeof(uint8_t), data, 0, NULL, NULL);
+        if(err != CL_SUCCESS) return err;
+
+        err = clEnqueueReadBuffer(queue, mutated_buf, CL_TRUE, 0, sizeof(cl_int), &mutated, 0, NULL, NULL);
         if(err != CL_SUCCESS) return err;
     }
 

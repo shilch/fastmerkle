@@ -12,7 +12,10 @@ device = 0
 # host pointers when dealing with buffers.
 # Setting to 1 can increase or decrease
 # performance or even crash the program.
-use_host_ptr = 1
+# For integrated GPUs it's worthwhile testing
+# it, for dedicated GPUs it might result into
+# errors and wrong results.
+use_host_ptr = 0
 
 # Number of iterations for benchmarking
 iterations = 10
