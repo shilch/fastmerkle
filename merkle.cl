@@ -2,7 +2,6 @@
 
 #define F1(x,y,z) (bitselect(z,y,x))
 #define F0(x,y,z) (bitselect (x, y, (x ^ z)))
-#define mod(x,y) x-(x/y*y)
 #define shr32(x,n) ((x) >> (n))
 #define rotl32(a,n) rotate((a), (n))
 
