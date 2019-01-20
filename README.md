@@ -36,7 +36,7 @@ platform = 0
 # OpenCL device to use on specified platform
 # Run fastmerkle with command 'info' to obtain
 # information about available hardware
-device = 0
+device = 1
 
 # Whether or not you want to use
 # host pointers when dealing with buffers.
