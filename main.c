@@ -122,6 +122,24 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    err = clReleaseProgram(program);
+    if(err != CL_SUCCESS){
+        printf("Failed to release program: %d\n", err);
+        return 1;
+    }
+
+    err = clReleaseContext(ctx);
+    if(err != CL_SUCCESS){
+        printf("Failed to release context: %d\n", err);
+        return 1;
+    }
+
+    err = clReleaseDevice(device);
+    if(err != CL_SUCCESS){
+        printf("Failed to release device: %d\n", err);
+        return 1;
+    }
+
     printf("Unknown command\n\n");
     print_help();
     return 1;
@@ -592,6 +610,15 @@ cl_int compute_tree(cl_context ctx, cl_device_id device, cl_program program, siz
     }
 
     err = clFinish(queue);
+    if(err != CL_SUCCESS) return err;
+
+    err = clReleaseEvent(wait);
+    if(err != CL_SUCCESS) return err;
+
+    err = clReleaseKernel(kernel);
+    if(err != CL_SUCCESS) return err;
+
+    err = clReleaseCommandQueue(queue);
     if(err != CL_SUCCESS) return err;
 
     if(mutated_ptr != NULL){
