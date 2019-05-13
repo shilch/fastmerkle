@@ -233,7 +233,7 @@ static void sha256d_cat(global const uint* lhs, global const uint* rhs, global u
 
 #define EQUAL(lhs, rhs) (lhs[0] == rhs[0] && lhs[1] == rhs[1] && lhs[2] == rhs[2] && lhs[3] == rhs[3] && lhs[4] == rhs[4] && lhs[5] == rhs[5] && lhs[6] == rhs[6] && lhs[7] == rhs[7])
 
-kernel void merkle(global const uchar* data, const size_t leaves, const size_t round, global int* mutated){
+kernel void merkle(global const uchar* data, const ulong leaves, const ulong round, global int* mutated){
     size_t id = get_global_id(0);
     size_t size = get_global_size(0);
 
