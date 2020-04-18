@@ -1,8 +1,8 @@
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
-#include <time.h>
 #include <assert.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <string.h>
+#include <time.h>
 
 #ifdef __APPLE__
 #   include <OpenCL/cl.h>

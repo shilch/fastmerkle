@@ -72,17 +72,23 @@ Assuming an average transaction size of 400 byte, you can use the following form
 
 **How to compile?**  
 
-First off, you need to install OpenCL.  
+First off, you need to install OpenCL and drivers for your graphics card.
 You can skip this step if you are on macOS, as it ships with OpenCL.
 
 Any of these links below should work. It's recommend to install your GPU vendor's library.  
 Download links for OpenCL library:
 
-**NVIDIA**: https://developer.nvidia.com/cuda-downloads  
 **AMD**: https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases  
 **Intel**: https://software.intel.com/en-us/articles/opencl-drivers  
 
 On my Windows VM, I found it pretty easy to use the AMD link.  
+
+CUDA for NVIDIA can be downloaded here:
+
+**NVIDIA**: https://developer.nvidia.com/cuda-downloads  
+
+On Ubuntu you can install the Open CL libraries by running `sudo apt install ocl-icd-opencl-dev`
+
 If you have installed make and cmake, you can just run `cmake . && make` in the root directory of this repository. You'll get a `fastmerkle` file.  
 Alternatively, with gcc:  
 
